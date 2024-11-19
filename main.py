@@ -20,8 +20,8 @@ app.config['JSON_AS_ASCII'] = False
 app.config['JSONIFY_MIMETYPE'] = "application/json; charset=utf-8"
 
 
-def detect_message_type(message: str) -> str:
-    """Erkennt den Nachrichtentyp basierend auf Schlüsselwörtern"""
+def detect_message_type(message: str, thread_id: str) -> str:
+    """Erkennt den Nachrichtentyp basierend auf Schlüsselwörtern und Thread-Historie"""
     calendar_keywords = [
         'termin',
         'beratungstermin',
@@ -32,12 +32,21 @@ def detect_message_type(message: str) -> str:
         'vereinbaren',
         'buchen'
     ]
-    message_lower = message.lower()
 
-    for keyword in calendar_keywords:
-        if keyword in message_lower:
-            print(f"Kalenderschlüsselwort gefunden: {keyword}")
-            return 'calendar'
+    # Prüfe Thread-Historie
+    try:
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        thread_context = ' '.join([msg.content[0].text.value.lower() for msg in messages.data])
+
+        # Prüfe aktuelle Nachricht und Kontext
+        message_lower = message.lower()
+        for keyword in calendar_keywords:
+            if keyword in message_lower or keyword in thread_context:
+                print(f"Kalenderschlüsselwort gefunden: {keyword}")
+                return 'calendar'
+    except Exception as e:
+        print(f"Fehler beim Prüfen der Thread-Historie: {e}")
+
     return 'solar'
 
 
@@ -82,7 +91,7 @@ def chat():
     data = request.json
     thread_id = data.get('thread_id')
     user_input = data.get('message', '')
-    msg_type = data.get('type') or detect_message_type(user_input)
+    msg_type = data.get('type') or detect_message_type(user_input, thread_id)
 
     print(f"Detected message type: {msg_type} for message: {user_input}")
 
