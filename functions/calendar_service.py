@@ -8,12 +8,12 @@ import pickle
 from datetime import datetime, timedelta
 import pytz
 from typing import Dict, Any, Optional
-import re
-from config_handler import get_google_credentials
+import json
+import base64
+import tempfile
 
 # Absolute Pfade
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CREDENTIALS_FILE = os.path.join(BASE_DIR, 'config', 'credentials.json')
 TOKEN_FILE = os.path.join(BASE_DIR, 'config', 'token.pickle')
 
 # Google Calendar Konfiguration
@@ -22,52 +22,59 @@ TIMEZONE = pytz.timezone('Europe/Berlin')
 
 
 def get_calendar_credentials():
-    """Google Calendar Authentifizierung für Heroku"""
-    credentials_dict = get_google_credentials()
-    if not credentials_dict:
-        raise FileNotFoundError("Google credentials not found in environment")
+    """Google Calendar Authentifizierung"""
+    try:
+        # Versuche Google Credentials aus Umgebungsvariablen zu laden
+        if 'GOOGLE_CREDENTIALS' in os.environ:
+            # Decode base64 credentials
+            credentials_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS'])
 
-    creds = None
-
-    # Token laden, falls vorhanden
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, 'rb') as token:
-            creds = pickle.load(token)
-            print("Bestehendes Token gefunden")
-
-    # Token prüfen und ggf. erneuern
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            print("Access Token ist abgelaufen - erneuere mit Refresh Token...")
-            creds.refresh(Request())
-            print("Access Token erfolgreich erneuert")
+            # Erstelle temporäre Datei für credentials
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_file:
+                temp_file.write(credentials_json.decode())
+                credentials_path = temp_file.name
         else:
-            print("Neue Authentifizierung erforderlich (kein gültiges Refresh Token)...")
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
-            print("Neue Authentifizierung erfolgreich")
+            credentials_path = os.path.join(BASE_DIR, 'config', 'credentials.json')
+            if not os.path.exists(credentials_path):
+                raise FileNotFoundError("Google credentials nicht gefunden")
 
-        # Token speichern
-        with open(TOKEN_FILE, 'wb') as token:
-            pickle.dump(creds, token)
-            print("Token in token.pickle gespeichert")
+        creds = None
+        if os.path.exists(TOKEN_FILE):
+            try:
+                with open(TOKEN_FILE, 'rb') as token:
+                    creds = pickle.load(token)
+                    print("Bestehendes Token geladen")
+            except Exception as e:
+                print(f"Fehler beim Laden des Tokens: {e}")
 
-    return creds
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                print("Token erneuern...")
+                creds.refresh(Request())
+            else:
+                print("Neue Authentifizierung erforderlich...")
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    credentials_path,
+                    SCOPES,
+                    redirect_uri='https://solar-bot.herokuapp.com/oauth2callback'
+                )
+                creds = flow.run_local_server(port=8080)
+
+            # Token speichern
+            with open(TOKEN_FILE, 'wb') as token:
+                pickle.dump(creds, token)
+                print("Neues Token gespeichert")
+
+        return creds
+
+    except Exception as e:
+        print(f"Fehler bei Calendar Authentifizierung: {e}")
+        raise
 
 
 def calculate_next_available_date(requested_weekday: int = 1, hour: int = 14, minute: int = 0) -> datetime:
-    """
-    Berechnet das nächste verfügbare Datum basierend auf den Anforderungen
-    Args:
-        requested_weekday: Tag der Woche (0=Montag, 1=Dienstag, ..., 6=Sonntag)
-        hour: Gewünschte Stunde (default 14)
-        minute: Gewünschte Minute (default 0)
-    Returns:
-        datetime: Nächstes verfügbares Datum
-    """
+    """Berechnet das nächste verfügbare Datum"""
     now = datetime.now(TIMEZONE)
-
-    # Berechne Tage bis zum nächsten gewünschten Wochentag
     days_ahead = requested_weekday - now.weekday()
     if days_ahead <= 0 or (days_ahead == 0 and now.hour >= hour):
         days_ahead += 7
@@ -85,13 +92,7 @@ def calculate_next_available_date(requested_weekday: int = 1, hour: int = 14, mi
 
 
 def parse_appointment_request(message: str) -> tuple[int, int, int]:
-    """
-    Analysiert die Terminanfrage und extrahiert Wochentag, Stunde und Minute
-    Args:
-        message: Die Nachricht des Nutzers
-    Returns:
-        tuple: (weekday, hour, minute)
-    """
+    """Analysiert die Terminanfrage"""
     weekday_mapping = {
         'montag': 0,
         'dienstag': 1,
@@ -100,7 +101,6 @@ def parse_appointment_request(message: str) -> tuple[int, int, int]:
         'freitag': 4
     }
 
-    # Standardwerte
     weekday = 1  # Default ist Dienstag
     hour = 14
     minute = 0
@@ -115,6 +115,7 @@ def parse_appointment_request(message: str) -> tuple[int, int, int]:
             break
 
     # Uhrzeit parsen
+    import re
     time_pattern = r'(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?'
     time_match = re.search(time_pattern, message)
     if time_match:
@@ -128,9 +129,6 @@ def parse_appointment_request(message: str) -> tuple[int, int, int]:
         print(f"Uhrzeit {hour}:{minute} außerhalb der Geschäftszeiten, setze auf 14:00")
         hour = 14
         minute = 0
-
-    # Hier NICHT mehr den Wochentag überschreiben
-    # weekday = 1  # Diese Zeile entfernen!
 
     print(f"Finaler Termin: {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'][weekday]} {hour}:{minute:02d}")
     return weekday, hour, minute
@@ -189,29 +187,9 @@ def create_appointment(
         print(
             f"Erstelle Termin für: {requested_date.strftime('%d.%m.%Y %H:%M')} - {meeting_end.strftime('%d.%m.%Y %H:%M')}")
 
-        # Standardbeschreibung mit korrekter UTF-8 Kodierung
-        default_description = """
-Solar-Beratungsgespräch
-
-Was Sie erwartet:
-- Analyse Ihres Stromverbrauchs
-- Berechnung des Solarpotentials
-- Individuelle Wirtschaftlichkeitsberechnung
-- Fördermöglichkeiten und Finanzierung
-- Konkrete nächste Schritte
-
-Bitte bringen Sie mit:
-- Aktuelle Stromrechnung
-- Grundriss oder Fotos des Daches (falls vorhanden)
-- Fragen und Anliegen
-
-Bei Verhinderung bitten wir um rechtzeitige Absage.
-
-Hinweis: Das Beratungsgespräch ist kostenlos und unverbindlich.""".encode('utf-8').decode('utf-8')
-
         event = {
-            'summary': "Solar-Beratungsgespräch".encode('utf-8').decode('utf-8'),
-            'description': default_description,
+            'summary': "Solar-Beratungsgespräch",
+            'description': description,
             'start': {
                 'dateTime': requested_date.isoformat(),
                 'timeZone': 'Europe/Berlin',

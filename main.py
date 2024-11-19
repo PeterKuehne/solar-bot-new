@@ -1,19 +1,27 @@
 import json
 import os
 import time
-from flask import Flask, request, jsonify
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
 from functions import solar
 from functions import calendar_service
 from functions.assistant import create_assistants
+from flask import Flask, request, jsonify
+from config.environment import Environment
 
 # Load environment variables from .env file
 load_dotenv()
 
+Environment.init_app()
+
 # Create Flask app
 app = Flask(__name__)
+
+# Konfiguration basierend auf Umgebung
+if Environment.is_production():
+    app.config['SERVER_NAME'] = os.getenv('APP_BASE_URL')
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Setze JSON-Encoding auf UTF-8
 app.config['JSON_AS_ASCII'] = False
@@ -185,6 +193,6 @@ def chat():
 
 
 if __name__ == '__main__':
-    # Dieser Teil wird nur bei lokalem Testen verwendet
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    port = Environment.get_port()
+    debug = not Environment.is_production()
+    app.run(host='0.0.0.0', port=port, debug=debug)
