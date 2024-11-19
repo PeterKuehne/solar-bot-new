@@ -1,27 +1,19 @@
 import json
 import os
 import time
+from flask import Flask, request, jsonify
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
 from functions import solar
 from functions import calendar_service
 from functions.assistant import create_assistants
-from flask import Flask, request, jsonify
-from config.environment import Environment
 
 # Load environment variables from .env file
 load_dotenv()
 
-Environment.init_app()
-
 # Create Flask app
 app = Flask(__name__)
-
-# Konfiguration basierend auf Umgebung
-if Environment.is_production():
-    app.config['SERVER_NAME'] = os.getenv('APP_BASE_URL')
-    app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Setze JSON-Encoding auf UTF-8
 app.config['JSON_AS_ASCII'] = False
@@ -41,6 +33,8 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 # Create or load assistant
 solar_assistant_id, calendar_assistant_id = create_assistants(client)
 
+
+# Root-Route
 @app.route('/')
 def index():
     return jsonify({
@@ -53,6 +47,7 @@ def index():
         "description": "Solar Bot API mit Termin-Buchung"
     })
 
+
 @app.route('/start', methods=['GET'])
 def start_conversation():
     print("Starting a new conversation...")
@@ -63,6 +58,9 @@ def start_conversation():
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    # Initialize calendar_event_created at the start
+    calendar_event_created = False
+
     data = request.json
     thread_id = data.get('thread_id')
     user_input = data.get('message', '')
@@ -96,7 +94,6 @@ def chat():
             assistant_id=assistant_id
         )
 
-        calendar_event_created = False
         # Check if the Run requires action (function call)
         while True:
             run_status = client.beta.threads.runs.retrieve(
@@ -182,7 +179,7 @@ def chat():
 
             time.sleep(1)
 
-        # Wenn wir hier ankommen, war alles erfolgreich
+        # Retrieve and return the latest message from the assistant
         messages = client.beta.threads.messages.list(thread_id=thread_id)
         response = messages.data[0].content[0].text.value
 
@@ -204,6 +201,5 @@ def chat():
 
 
 if __name__ == '__main__':
-    port = Environment.get_port()
-    debug = not Environment.is_production()
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
