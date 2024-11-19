@@ -20,6 +20,40 @@ app.config['JSON_AS_ASCII'] = False
 app.config['JSONIFY_MIMETYPE'] = "application/json; charset=utf-8"
 
 
+def detect_message_type(message: str) -> str:
+    """Erkennt den Nachrichtentyp basierend auf Schlüsselwörtern"""
+    calendar_keywords = [
+        'termin',
+        'beratungstermin',
+        'beratungsgespräch',
+        'treffen',
+        'kalender',
+        'uhrzeit',
+        'vereinbaren',
+        'buchen'
+    ]
+    message_lower = message.lower()
+
+    for keyword in calendar_keywords:
+        if keyword in message_lower:
+            print(f"Kalenderschlüsselwort gefunden: {keyword}")
+            return 'calendar'
+    return 'solar'
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    calendar_event_created = False
+
+    data = request.json
+    thread_id = data.get('thread_id')
+    user_input = data.get('message', '')
+    msg_type = data.get('type') or detect_message_type(user_input)
+    print(f"Detected message type: {msg_type} for message: {user_input}")
+
+    print(f"Detected message type: {msg_type} for message: {user_input}")
+
+
 # Füge UTF-8 Header zu allen Responses hinzu
 @app.after_request
 def add_utf8_header(response):
