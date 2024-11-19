@@ -2,7 +2,6 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 import os
 import pickle
 from datetime import datetime, timedelta
@@ -10,7 +9,6 @@ import pytz
 from typing import Dict, Any, Optional
 import json
 import base64
-import tempfile
 
 # Absolute Pfade
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,50 +20,55 @@ TIMEZONE = pytz.timezone('Europe/Berlin')
 
 
 def get_calendar_credentials():
-    """Google Calendar Authentifizierung"""
+    """Google Calendar Authentifizierung für Heroku"""
     try:
-        # Versuche Google Credentials aus Umgebungsvariablen zu laden
+        # Versuche Token aus Umgebungsvariable zu laden
+        if 'GOOGLE_TOKEN' in os.environ:
+            token_data = json.loads(base64.b64decode(os.environ['GOOGLE_TOKEN']))
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            if creds and creds.valid:
+                return creds
+
+        # Versuche Credentials aus Umgebungsvariable
         if 'GOOGLE_CREDENTIALS' in os.environ:
-            # Decode base64 credentials
-            credentials_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS'])
+            client_config = json.loads(base64.b64decode(os.environ['GOOGLE_CREDENTIALS']))
+            flow = InstalledAppFlow.from_client_config(
+                client_config,
+                SCOPES,
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # Für headless auth
+            )
+            auth_url = flow.authorization_url()[0]
+            print(f"""
+            Bitte besuchen Sie diese URL um den Bot zu autorisieren:
+            {auth_url}
 
-            # Erstelle temporäre Datei für credentials
-            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_file:
-                temp_file.write(credentials_json.decode())
-                credentials_path = temp_file.name
-        else:
-            credentials_path = os.path.join(BASE_DIR, 'config', 'credentials.json')
-            if not os.path.exists(credentials_path):
-                raise FileNotFoundError("Google credentials nicht gefunden")
+            Setzen Sie dann den erhaltenen Code als Umgebungsvariable:
+            heroku config:set GOOGLE_AUTH_CODE=Ihr_Code
+            """)
 
-        creds = None
-        if os.path.exists(TOKEN_FILE):
-            try:
-                with open(TOKEN_FILE, 'rb') as token:
-                    creds = pickle.load(token)
-                    print("Bestehendes Token geladen")
-            except Exception as e:
-                print(f"Fehler beim Laden des Tokens: {e}")
+            if 'GOOGLE_AUTH_CODE' in os.environ:
+                code = os.environ['GOOGLE_AUTH_CODE']
+                flow.fetch_token(code=code)
+                creds = flow.credentials
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                print("Token erneuern...")
-                creds.refresh(Request())
-            else:
-                print("Neue Authentifizierung erforderlich...")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    credentials_path,
-                    SCOPES,
-                    redirect_uri='https://solar-bot.herokuapp.com/oauth2callback'
-                )
-                creds = flow.run_local_server(port=8080)
+                # Speichere Token in Umgebungsvariable
+                token_data = {
+                    'token': creds.token,
+                    'refresh_token': creds.refresh_token,
+                    'token_uri': creds.token_uri,
+                    'client_id': creds.client_id,
+                    'client_secret': creds.client_secret,
+                    'scopes': creds.scopes
+                }
+                token_b64 = base64.b64encode(json.dumps(token_data).encode()).decode()
+                print("Speichern Sie dieses Token in der GOOGLE_TOKEN Umgebungsvariable:")
+                print(token_b64)
 
-            # Token speichern
-            with open(TOKEN_FILE, 'wb') as token:
-                pickle.dump(creds, token)
-                print("Neues Token gespeichert")
+                return creds
 
-        return creds
+            raise Exception("GOOGLE_AUTH_CODE nicht gefunden")
+
+        raise Exception("Keine Google Credentials gefunden")
 
     except Exception as e:
         print(f"Fehler bei Calendar Authentifizierung: {e}")
