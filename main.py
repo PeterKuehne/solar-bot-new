@@ -9,13 +9,13 @@ from functions import solar
 from functions import calendar_service
 from functions.assistant import create_assistants
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 # Create Flask app
 app = Flask(__name__)
 
-# Setze JSON-Encoding auf UTF-8
+# JSON-Encoding auf UTF-8
 app.config['JSON_AS_ASCII'] = False
 app.config['JSONIFY_MIMETYPE'] = "application/json; charset=utf-8"
 
@@ -41,20 +41,6 @@ def detect_message_type(message: str) -> str:
     return 'solar'
 
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    calendar_event_created = False
-
-    data = request.json
-    thread_id = data.get('thread_id')
-    user_input = data.get('message', '')
-    msg_type = data.get('type') or detect_message_type(user_input)
-    print(f"Detected message type: {msg_type} for message: {user_input}")
-
-    print(f"Detected message type: {msg_type} for message: {user_input}")
-
-
-# Füge UTF-8 Header zu allen Responses hinzu
 @app.after_request
 def add_utf8_header(response):
     response.headers['Content-Type'] = 'application/json; charset=utf-8'
@@ -68,7 +54,6 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 solar_assistant_id, calendar_assistant_id = create_assistants(client)
 
 
-# Root-Route
 @app.route('/')
 def index():
     return jsonify({
@@ -92,13 +77,14 @@ def start_conversation():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    # Initialize calendar_event_created at the start
     calendar_event_created = False
 
     data = request.json
     thread_id = data.get('thread_id')
     user_input = data.get('message', '')
-    msg_type = data.get('type', 'solar')
+    msg_type = data.get('type') or detect_message_type(user_input)
+
+    print(f"Detected message type: {msg_type} for message: {user_input}")
 
     if not thread_id:
         print("Error: Missing thread_id")
@@ -128,7 +114,6 @@ def chat():
             assistant_id=assistant_id
         )
 
-        # Check if the Run requires action (function call)
         while True:
             run_status = client.beta.threads.runs.retrieve(
                 thread_id=thread_id,
@@ -213,7 +198,7 @@ def chat():
 
             time.sleep(1)
 
-        # Retrieve and return the latest message from the assistant
+        # Get response
         messages = client.beta.threads.messages.list(thread_id=thread_id)
         response = messages.data[0].content[0].text.value
 
