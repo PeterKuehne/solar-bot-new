@@ -41,6 +41,17 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 # Create or load assistant
 solar_assistant_id, calendar_assistant_id = create_assistants(client)
 
+@app.route('/')
+def index():
+    return jsonify({
+        "status": "online",
+        "endpoints": {
+            "start": "/start",
+            "chat": "/chat"
+        },
+        "version": "1.0",
+        "description": "Solar Bot API mit Termin-Buchung"
+    })
 
 @app.route('/start', methods=['GET'])
 def start_conversation():
