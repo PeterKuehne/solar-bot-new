@@ -61,7 +61,7 @@ def create_assistants(client: OpenAI) -> tuple[str, str]:
             solar_assistant = client.beta.assistants.create(
                 name="Solar Bot",
                 instructions=solar_instructions,
-                model="gpt-4-1106-preview",
+                model="gpt-4o-mini-2024-07-18",
                 tools=[
                     {"type": "code_interpreter"},
                     {
