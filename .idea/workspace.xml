@@ -5,10 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="eac2b596-f2b1-47b0-a6c8-d52faa9e2d5c" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/tests/test_calendar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/environment.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/environment.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/functions/calendar_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/functions/calendar_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/calendar_prompts.py" beforeDir="false" afterPath="$PROJECT_DIR$/prompts/calendar_prompts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_calendar.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_calendar.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

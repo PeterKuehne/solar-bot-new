@@ -1,92 +1,124 @@
 import os
 import json
 import base64
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
-import pytz
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from typing import Dict, Any
+import logging
+from datetime import datetime, timedelta
+import pytz
+from googleapiclient.errors import HttpError
+from prompts.calendar_prompts import unavailable_template, business_hours_template
 
 # Globale Variablen
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 TIMEZONE = pytz.timezone('Europe/Berlin')
 
+logging.basicConfig(level=logging.INFO)
+
+
 def get_calendar_credentials():
-    """
-    Authentifiziert den Service-Account für den Google Calendar.
-    Die Anmeldedaten werden entweder aus einer Umgebungsvariablen (Produktionsumgebung)
-    oder aus einer lokalen JSON-Datei (Entwicklungsumgebung) geladen.
-    """
     try:
         if "GOOGLE_SERVICE_ACCOUNT" in os.environ:
-            # Anmeldedaten aus der Umgebungsvariablen (Heroku/Produktion)
             service_account_info = json.loads(base64.b64decode(os.environ['GOOGLE_SERVICE_ACCOUNT']))
-            credentials = service_account.Credentials.from_service_account_info(
+            return service_account.Credentials.from_service_account_info(
                 service_account_info, scopes=SCOPES
             )
-        else:
-            # Anmeldedaten aus der JSON-Datei (lokale Umgebung)
-            creds_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'keys', 'solar-bot-442220-495e1d9179b6.json')
-            credentials = service_account.Credentials.from_service_account_file(creds_file, scopes=SCOPES)
-
-        return credentials
+        creds_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'keys',
+                                  'solar-bot-442220-495e1d9179b6.json')
+        return service_account.Credentials.from_service_account_file(creds_file, scopes=SCOPES)
     except Exception as e:
-        print(f"Fehler bei der Authentifizierung: {e}")
+        logging.error(f"Fehler bei der Authentifizierung: {e}")
         raise
 
-def calculate_next_available_date(requested_weekday: int = 1, hour: int = 14, minute: int = 0) -> datetime:
-    """
-    Berechnet das nächste verfügbare Datum basierend auf dem gewünschten Wochentag und der Uhrzeit.
-    """
-    now = datetime.now(TIMEZONE)
-    days_ahead = requested_weekday - now.weekday()
-    if days_ahead <= 0 or (days_ahead == 0 and now.hour >= hour):
-        days_ahead += 7
 
-    next_date = now + timedelta(days=days_ahead)
-    next_date = next_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+def is_within_business_hours(start_time: datetime, end_time: datetime) -> bool:
+    business_start = start_time.replace(hour=9, minute=0, second=0, microsecond=0)
+    business_end = start_time.replace(hour=17, minute=0, second=0, microsecond=0)
+    lunch_start = start_time.replace(hour=12, minute=0, second=0, microsecond=0)
+    lunch_end = start_time.replace(hour=13, minute=0, second=0, microsecond=0)
+    return not (
+            start_time < business_start or
+            end_time > business_end or
+            lunch_start <= start_time < lunch_end or
+            lunch_start < end_time <= lunch_end or
+            start_time.weekday() >= 5
+    )
 
-    print(f"Berechnetes Datum: {next_date.strftime('%d.%m.%Y %H:%M')}")
-    return next_date
 
-def check_availability(start_time: datetime, end_time: datetime) -> bool:
-    """
-    Prüft die Verfügbarkeit eines Zeitfensters im Google-Kalender.
-    """
+def check_availability(start_time: datetime, end_time: datetime) -> dict:
     try:
+        # Geschäftszeiten prüfen
+        if not is_within_business_hours(start_time, end_time):
+            return {
+                "available": False,
+                "message": "Der Termin liegt außerhalb der Geschäftszeiten.",
+                "busy": []
+            }
+
+        start_time = start_time.astimezone(TIMEZONE)
+        end_time = end_time.astimezone(TIMEZONE)
+
         creds = get_calendar_credentials()
         service = build('calendar', 'v3', credentials=creds)
+
+        calendar_id = 'solarbot447@gmail.com'
 
         body = {
             "timeMin": start_time.isoformat(),
             "timeMax": end_time.isoformat(),
-            "items": [{"id": "primary"}]
+            "items": [{"id": calendar_id}]
         }
 
         events_result = service.freebusy().query(body=body).execute()
-        calendar_busy = events_result['calendars']['primary']['busy']
-        is_available = len(calendar_busy) == 0
+        calendar_busy = events_result['calendars'][calendar_id]['busy']
 
-        print(f"Zeitslot ist {'verfügbar' if is_available else 'nicht verfügbar'}")
-        return is_available
+        is_available = len(calendar_busy) == 0
+        return {"available": is_available, "busy": calendar_busy}
     except Exception as e:
-        print(f"Fehler bei der Verfügbarkeitsprüfung: {e}")
+        print(f"Fehler bei check_availability: {e}")
         raise
 
+
+def find_next_available_slots(start_time: datetime, end_time: datetime, max_attempts: int = 5) -> list:
+    alternatives, increment, attempts = [], timedelta(hours=1), 0
+    while len(alternatives) < max_attempts and attempts < 24:
+        start_time, end_time = start_time + increment, end_time + increment
+        if not is_within_business_hours(start_time, end_time):
+            continue
+        creds = get_calendar_credentials()
+        service = build('calendar', 'v3', credentials=creds)
+        calendar_id = 'solarbot447@gmail.com'
+        body = {"timeMin": start_time.isoformat(), "timeMax": end_time.isoformat(), "items": [{"id": calendar_id}]}
+        if not service.freebusy().query(body=body).execute()['calendars'][calendar_id]['busy']:
+            alternatives.append(
+                {"start_time": start_time.strftime('%d.%m.%Y %H:%M'), "end_time": end_time.strftime('%H:%M')})
+        attempts += 1
+    return alternatives
+
+
 def create_appointment(
-    summary: str,
-    description: str,
-    start_time: datetime,
-    end_time: datetime,
-    email: str
+        summary: str,
+        description: str,
+        start_time: datetime,
+        end_time: datetime,
+        email: str
 ) -> Dict[str, Any]:
-    """
-    Erstellt einen neuen Termin im Google-Kalender.
-    """
     try:
+        # Geschäftszeiten prüfen
+        if not is_within_business_hours(start_time, end_time):
+            return {"status": "failed", "message": "Der Termin liegt außerhalb der Geschäftszeiten."}
+
+        # Verfügbarkeit prüfen
+        availability = check_availability(start_time, end_time)
+        if not availability["available"]:
+            return {"status": "failed", "message": availability.get("message", "Zeitslot ist nicht verfügbar.")}
+
+        # Kalenderzugriff vorbereiten
         creds = get_calendar_credentials()
         service = build('calendar', 'v3', credentials=creds)
 
+        # Termininformationen erstellen
         event = {
             'summary': summary,
             'description': description,
@@ -98,7 +130,6 @@ def create_appointment(
                 'dateTime': end_time.isoformat(),
                 'timeZone': 'Europe/Berlin',
             },
-            # 'attendees': [{'email': email}],
             'reminders': {
                 'useDefault': False,
                 'overrides': [
@@ -108,10 +139,15 @@ def create_appointment(
             },
         }
 
-        event = service.events().insert(calendarId='primary', body=event, sendUpdates='all').execute()
+        # Termin erstellen
+        created_event = service.events().insert(
+            calendarId='solarbot447@gmail.com',
+            body=event,
+            sendUpdates='all'
+        ).execute()
 
-        print(f"Termin erfolgreich erstellt: {event.get('htmlLink', 'Keine URL verfügbar')}")
-        return event
+        return created_event
+
     except Exception as e:
         print(f"Fehler beim Erstellen des Termins: {e}")
         raise

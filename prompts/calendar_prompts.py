@@ -113,11 +113,18 @@ Alternative Termine in dieser Woche:
 
 Welcher Termin würde Ihnen besser passen?"""
 
+# Template für Rückmeldung bei Terminen außerhalb der Geschäftszeiten
+business_hours_template = """
+    "Leider liegt der gewünschte Termin am {date} um {time} Uhr außerhalb unserer Geschäftszeiten. "
+    "Geschäftszeiten: Montag bis Freitag, 09:00 - 17:00 Uhr, mit einer Mittagspause von 12:00 - 13:00 Uhr."""
+
+
 # Exportiere alle Templates und Funktionen
 __all__ = [
     'assistant_instructions',
     'appointment_description',
     'confirmation_template',
     'unavailable_template',
+    'business_hours_template',
     'get_next_tuesday_formatted'
 ]

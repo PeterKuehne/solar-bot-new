@@ -9,26 +9,50 @@ class Environment:
 
     @staticmethod
     def get_credentials_path() -> Optional[str]:
-        """Holt den Pfad zu den Google Credentials"""
-        # 1. Versuche lokale credentials.json
-        local_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'credentials.json')
-        if os.path.exists(local_path):
-            return local_path
+        """
+        Holt den Pfad zu den Google Credentials.
+        """
+        try:
+            # 1. Versuche lokale credentials.json
+            local_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'keys', 'credentials.json')
+            if os.path.exists(local_path):
+                # Validierung der credentials.json
+                with open(local_path, 'r') as file:
+                    credentials = json.load(file)
+                if "client_email" in credentials and "solarbot447" not in credentials["client_email"]:
+                    raise ValueError(
+                        "Falsche Anmeldedaten: Die client_email stimmt nicht mit dem Solarbot447-Service-Account überein."
+                    )
+                return local_path
 
-        # 2. Versuche Base64-kodierte Credentials aus Umgebungsvariablen
-        if 'GOOGLE_CREDENTIALS' in os.environ:
-            try:
-                credentials_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS'])
-                # Temporäre Datei erstellen
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
-                    temp_file.write(credentials_json.decode())
-                    return temp_file.name
-            except Exception as e:
-                print(f"Fehler beim Dekodieren der Credentials: {e}")
-                return None
+            # 2. Versuche Base64-kodierte Credentials aus Umgebungsvariablen
+            if 'GOOGLE_CREDENTIALS' in os.environ:
+                try:
+                    credentials_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS']).decode()
+                    # Temporäre Datei erstellen
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+                        temp_file.write(credentials_json)
+                        temp_file_path = temp_file.name
 
-        return None
+                    # Validierung der Umgebungsvariablen-Credentials
+                    credentials = json.loads(credentials_json)
+                    if "client_email" in credentials and "solarbot447" not in credentials["client_email"]:
+                        raise ValueError(
+                            "Falsche Anmeldedaten: Die client_email stimmt nicht mit dem Solarbot447-Service-Account überein."
+                        )
+                    return temp_file_path
+                except Exception as e:
+                    print(f"Fehler beim Dekodieren der Credentials: {e}")
+                    return None
+
+            return None
+        except FileNotFoundError:
+            print("Die JSON-Datei für die Anmeldedaten wurde nicht gefunden.")
+            raise
+        except Exception as e:
+            print(f"Fehler beim Laden der Anmeldedaten: {e}")
+            raise
 
     @staticmethod
     def get_callback_url() -> str:
