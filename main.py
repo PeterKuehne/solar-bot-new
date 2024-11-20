@@ -148,8 +148,7 @@ def chat():
                         elif function_name == "check_availability":
                             output = calendar_service.check_availability(
                                 arguments["start_time"],
-                                arguments["end_time"],
-                                message=user_input
+                                arguments["end_time"]
                             )
                         elif function_name == "create_appointment":
                             output = calendar_service.create_appointment(
@@ -157,8 +156,7 @@ def chat():
                                 arguments["description"],
                                 arguments["start_time"],
                                 arguments["end_time"],
-                                arguments["email"],
-                                message=user_input
+                                arguments["email"]
                             )
                             calendar_event_created = True
                             print("Kalendereintrag erfolgreich erstellt")
