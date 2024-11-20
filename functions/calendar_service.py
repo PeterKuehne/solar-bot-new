@@ -111,6 +111,8 @@ def find_next_available_slots(start_time: datetime, end_time: datetime, max_atte
     return alternatives
 
 
+from datetime import datetime
+
 def create_appointment(
         summary: str,
         description: str,
@@ -119,6 +121,12 @@ def create_appointment(
         email: str
 ) -> Dict[str, Any]:
     try:
+        # Konvertiere Strings in datetime-Objekte, falls nötig
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time)
+        if isinstance(end_time, str):
+            end_time = datetime.fromisoformat(end_time)
+
         # Geschäftszeiten prüfen
         if not is_within_business_hours(start_time, end_time):
             return {"status": "failed", "message": "Der Termin liegt außerhalb der Geschäftszeiten."}
