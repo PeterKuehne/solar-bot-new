@@ -53,8 +53,14 @@ def is_within_business_hours(start_time, end_time):
     )
 
 
-def check_availability(start_time: datetime, end_time: datetime) -> dict:
+def check_availability(start_time, end_time) -> dict:
     try:
+        # Konvertiere Strings in datetime-Objekte, falls nötig
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time)
+        if isinstance(end_time, str):
+            end_time = datetime.fromisoformat(end_time)
+
         # Geschäftszeiten prüfen
         if not is_within_business_hours(start_time, end_time):
             return {
@@ -63,14 +69,15 @@ def check_availability(start_time: datetime, end_time: datetime) -> dict:
                 "busy": []
             }
 
+        # Zeitzonenanpassung
         start_time = start_time.astimezone(TIMEZONE)
         end_time = end_time.astimezone(TIMEZONE)
 
+        # Kalenderzugriff
         creds = get_calendar_credentials()
         service = build('calendar', 'v3', credentials=creds)
 
         calendar_id = 'solarbot447@gmail.com'
-
         body = {
             "timeMin": start_time.isoformat(),
             "timeMax": end_time.isoformat(),
