@@ -99,7 +99,7 @@ def create_assistants(client: OpenAI) -> tuple[str, str]:
             calendar_assistant = client.beta.assistants.create(
                 name="Calendar Bot",
                 instructions=calendar_instructions,
-                model="gpt-4-1106-preview",
+                model="gpt-4o-mini-2024-07-18",
                 tools=[
                     {
                         "type": "function",
