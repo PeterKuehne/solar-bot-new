@@ -32,17 +32,24 @@ def get_calendar_credentials():
         raise
 
 
-def is_within_business_hours(start_time: datetime, end_time: datetime) -> bool:
+def is_within_business_hours(start_time, end_time):
+    # Konvertiere Strings in datetime, falls nötig
+    if isinstance(start_time, str):
+        start_time = datetime.fromisoformat(start_time)
+    if isinstance(end_time, str):
+        end_time = datetime.fromisoformat(end_time)
+
     business_start = start_time.replace(hour=9, minute=0, second=0, microsecond=0)
     business_end = start_time.replace(hour=17, minute=0, second=0, microsecond=0)
     lunch_start = start_time.replace(hour=12, minute=0, second=0, microsecond=0)
     lunch_end = start_time.replace(hour=13, minute=0, second=0, microsecond=0)
+
     return not (
-            start_time < business_start or
-            end_time > business_end or
-            lunch_start <= start_time < lunch_end or
-            lunch_start < end_time <= lunch_end or
-            start_time.weekday() >= 5
+        start_time < business_start or
+        end_time > business_end or
+        lunch_start <= start_time < lunch_end or
+        lunch_start < end_time <= lunch_end or
+        start_time.weekday() >= 5  # Samstag oder Sonntag
     )
 
 
